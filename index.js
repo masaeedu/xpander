@@ -1,29 +1,22 @@
-const product = require("cartesian-product");
-const _ = require("lodash");
+const { Arr, Obj, Fn } = require("@masaeedu/fp");
 
-const expand = config => {
-  if (
-    config == null ||
-    (typeof config !== "function" && typeof config !== "object")
-  )
-    return [config];
-  if (Array.isArray(config)) return _.flatMap(config, expand);
+const isPrim = c =>
+  c == null || (typeof c !== "function" && typeof c !== "object");
 
-  const axes = Object.keys(config);
-  const combinations = product(axes.map(k => expand(config[k])));
+const match = ({ array, object, literal }) => v =>
+  isPrim(v) ? literal(v) : Array.isArray(v) ? array(v) : object(v);
 
-  return combinations.map(combo =>
-    combo.reduce(
-      (prev, curr, i) =>
-        Object.assign({}, prev, axes[i] === "." ? curr : { [axes[i]]: curr }),
-      {}
-    )
-  );
-};
+const expandDotted = ({ ["."]: x, ...xs }) => (x ? { ...xs, ...x } : xs);
 
-const indexDottedPath = (path, obj) => {
-  return path.split(".").reduce((o, i) => o[i], obj);
-};
+const expand = m =>
+  match({
+    literal: v => [v],
+    array: Arr.chain(expand),
+    object: Fn.pipe([Obj.traverse(Arr)(expand), Arr.map(expandDotted)])
+  })(m);
+
+const indexDottedPath = (path, obj) =>
+  path.split(".").reduce((o, i) => o[i], obj);
 
 const interpolate = config => {
   const pattern = /\{([^\{\}]+)\}/;
@@ -33,7 +26,7 @@ const interpolate = config => {
     const template = config[curr];
     let result = template;
     while (pattern.test(result)) {
-      result = result.replace(new RegExp(pattern, "g"), (match, dotpath) =>
+      result = result.replace(new RegExp(pattern, "g"), (_, dotpath) =>
         indexDottedPath(dotpath, config)
       );
     }
